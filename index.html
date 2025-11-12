@@ -40,11 +40,11 @@
   <div class="card">
     <h1>Shift Pay Calculator</h1>
     <div class="row">
-      <label>Pay $/hr <input id="rate" type="number" value="25" step="0.01" aria-label="Hourly rate"></label>
-      <label>Tax % <input id="tax" type="number" value="22" step="0.1" min="0" max="50" aria-label="Tax percentage"></label>
+      <label>Pay $/hr <input id="rate" type="number" value="25" step="0.01"></label>
+      <label>Tax % <input id="tax" type="number" value="22" step="0.1" min="0" max="50"></label>
       <div id="timestamp" class="small" style="margin-left:auto"></div>
     </div>
-    <textarea id="input" placeholder="11/5/25 6:00am-7:00pm 30min lunch" aria-label="Shift log"></textarea>
+    <textarea id="input" placeholder="11/5/25 6:00am-7:00pm 30min lunch"></textarea>
     <div class="row">
       <button id="calc" class="btn btn-primary">Calculate</button>
       <button id="clear" class="btn btn-secondary">Clear</button>
@@ -53,9 +53,9 @@
       <button id="theme" class="btn btn-secondary">Dark</button>
       <button id="installBtn" class="btn btn-install" hidden>Install App</button>
     </div>
-    <pre id="output" aria-live="polite"></pre>
+    <pre id="output"></pre>
     <h2 style="margin-top:1.5rem">History (weekly)</h2>
-    <table id="history" aria-label="Pay history">
+    <table id="history">
       <thead><tr><th>Date</th><th>Hrs</th><th>Rate</th><th>Gross</th></tr></thead>
       <tbody></tbody>
     </table>
@@ -63,7 +63,7 @@
 </div>
 
 <script>
-// DOM Elements
+// DOM
 const $ = s => document.querySelector(s);
 const input = $('#input'), output = $('#output'), calc = $('#calc'), clear = $('#clear'), copy = $('#copy'),
       download = $('#download'), themeBtn = $('#theme'), installBtn = $('#installBtn'),
@@ -73,33 +73,14 @@ const input = $('#input'), output = $('#output'), calc = $('#calc'), clear = $('
 let history = JSON.parse(localStorage.getItem('shiftHistory') || '[]');
 let installPrompt = null;
 
-// PWA Install
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault();
-  installPrompt = e;
-  installBtn.hidden = false;
-});
-installBtn.addEventListener('click', async () => {
-  if (!installPrompt) return;
-  installPrompt.prompt();
-  const { outcome } = await installPrompt.userChoice;
-  if (outcome === 'accepted') installBtn.hidden = true;
-  installPrompt = null;
-});
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js').catch(() => {});
-  });
-}
+// PWA
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; installBtn.hidden = false; });
+installBtn.addEventListener('click', async () => { if (!installPrompt) return; installPrompt.prompt(); const { outcome } = await installPrompt.userChoice; if (outcome === 'accepted') installBtn.hidden = true; installPrompt = null; });
+if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('service-worker.js').catch(() => {}); }); }
 
 // Helpers
-const nowStamp = () => ts.textContent = new Date().toLocaleString();
-nowStamp();
-
-const formatHM = m => {
-  const h = Math.floor(m / 60), mm = m % 60;
-  return `${h}:${mm.toString().padStart(2, '0')}`;
-};
+const nowStamp = () => ts.textContent = new Date().toLocaleString(); nowStamp();
+const formatHM = m => { const h = Math.floor(m/60), mm = m%60; return `${h}:${mm.toString().padStart(2,'0')}`; };
 
 const toMinutes = str => {
   const match = str.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
@@ -111,7 +92,7 @@ const toMinutes = str => {
   return h * 60 + m;
 };
 
-// Parse Line (Fixed: 30min, 30 min, 0.5hr, no lunch)
+// Parse Line — FIXED DASH & LUNCH
 const parseLine = line => {
   line = line.trim();
   if (!line) return null;
@@ -121,7 +102,9 @@ const parseLine = line => {
   }
 
   const datePart = line.split(/\s+/)[0];
-  const timeMatch = line.match(/(\d{1,2}:\d{2}\s*[ap]m)\s*[-–—]\s*(\d{1,2}:\d{2}\s*[ap]m)/i);
+
+  // FIXED: Match ANY dash: -, –, —, - (en/em/hyphen)
+  const timeMatch = line.match(/(\d{1,2}:\d{2}\s*[ap]m)[\s\-–—\-]*(\d{1,2}:\d{2}\s*[ap]m)/i);
   if (!timeMatch) return { date: datePart, mins: 0, note: 'Invalid time' };
 
   const [startStr, endStr] = [timeMatch[1], timeMatch[2]];
@@ -141,14 +124,14 @@ const parseLine = line => {
   } else if (/no\s*lunch/i.test(line)) {
     lunch = 0;
   } else if (totalMins > 360) {
-    lunch = 30; // auto 30min if >6h
+    lunch = 30;
   }
 
   const workMins = Math.max(0, totalMins - lunch);
   return { date: datePart, mins: workMins, note: lunch > 0 ? '' : 'No lunch' };
 };
 
-// Calculate Pay
+// Calc Pay
 const calcPay = (mins, rate, taxPct) => {
   const hrs = mins / 60;
   const reg = Math.min(hrs, 40);
@@ -162,10 +145,7 @@ const calcPay = (mins, rate, taxPct) => {
 // Render History
 const renderHistory = () => {
   const data = history.slice(-50);
-  if (!data.length) {
-    histBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">No history yet</td></tr>';
-    return;
-  }
+  if (!data.length) { histBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">No history yet</td></tr>'; return; }
   const groups = {};
   data.forEach(r => {
     const d = new Date(r.date);
@@ -190,7 +170,7 @@ const renderHistory = () => {
 };
 renderHistory();
 
-// Run Calculation
+// Run Calc
 const runCalc = () => {
   nowStamp();
   const lines = input.value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -220,12 +200,11 @@ const runCalc = () => {
   renderHistory();
 };
 
-// Button Events
+// Buttons
 calc.addEventListener('click', () => {
   clearTimeout(window.calcDebounce);
-  window.calcDebounce = setTimeout(runCalc, 300);
+  window.calcDebounce = setTimeout(runCalc, 100);
 });
-
 clear.addEventListener('click', () => { input.value = ''; output.textContent = ''; input.focus(); });
 copy.addEventListener('click', async () => {
   await navigator.clipboard.writeText(output.textContent);
@@ -249,16 +228,11 @@ themeBtn.addEventListener('click', () => {
   themeBtn.textContent = document.body.classList.contains('dark') ? 'Light' : 'Dark';
 });
 
-// Keyboard & Touch
+// Input
 input.addEventListener('keydown', e => {
   if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); calc.click(); }
 });
 input.focus();
-
-let pressTimer;
-calc.addEventListener('touchstart', () => pressTimer = setTimeout(() => calc.click(), 800));
-calc.addEventListener('touchend', () => clearTimeout(pressTimer));
-calc.addEventListener('touchmove', () => clearTimeout(pressTimer));
 </script>
 </body>
 </html>
