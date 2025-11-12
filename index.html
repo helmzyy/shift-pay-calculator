@@ -63,22 +63,44 @@
 </div>
 
 <script>
-/* ---------- STATE & DOM ---------- */
+// DOM Elements
 const $ = s => document.querySelector(s);
 const input = $('#input'), output = $('#output'), calc = $('#calc'), clear = $('#clear'), copy = $('#copy'),
       download = $('#download'), themeBtn = $('#theme'), installBtn = $('#installBtn'),
       rateIn = $('#rate'), taxIn = $('#tax'), histBody = $('#history tbody'), ts = $('#timestamp');
-let history = JSON.parse(localStorage.getItem('shiftHistory')||'[]');
+
+// State
+let history = JSON.parse(localStorage.getItem('shiftHistory') || '[]');
 let installPrompt = null;
 
-/* ---------- PWA INSTALL ---------- */
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; installBtn.hidden = false; });
-installBtn.addEventListener('click', async () => { if (!installPrompt) return; installPrompt.prompt(); const { outcome } = await installPrompt.userChoice; if (outcome === 'accepted') installBtn.hidden = true; installPrompt = null; });
-if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('service-worker.js').catch(err => console.log('SW failed:', err)); }); }
+// PWA Install
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installPrompt = e;
+  installBtn.hidden = false;
+});
+installBtn.addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  if (outcome === 'accepted') installBtn.hidden = true;
+  installPrompt = null;
+});
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
 
-/* ---------- HELPERS ---------- */
-const nowStamp = () => ts.textContent = new Date().toLocaleString(); nowStamp();
-const formatHM = m => { const h = Math.floor(m/60), mm = m%60; return `${h}:${mm.toString().padStart(2,'0')}`; };
+// Helpers
+const nowStamp = () => ts.textContent = new Date().toLocaleString();
+nowStamp();
+
+const formatHM = m => {
+  const h = Math.floor(m / 60), mm = m % 60;
+  return `${h}:${mm.toString().padStart(2, '0')}`;
+};
+
 const toMinutes = str => {
   const match = str.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
   if (!match) return null;
@@ -89,34 +111,27 @@ const toMinutes = str => {
   return h * 60 + m;
 };
 
-/* ---------- PARSE LINE (FIXED LUNCH & TIME) ---------- */
+// Parse Line (Fixed: 30min, 30 min, 0.5hr, no lunch)
 const parseLine = line => {
   line = line.trim();
   if (!line) return null;
 
-  // Off days
   if (/holiday|off|vacation|pto/i.test(line)) {
     return { date: line.split(/\s+/)[0], mins: 0, note: 'Off' };
   }
 
-  // Extract date
   const datePart = line.split(/\s+/)[0];
-  const [mo, da, yy] = datePart.split(/[\/\-\.]/).map(Number);
-  const year = yy < 100 ? yy + 2000 : yy;
-
-  // Extract time: 6:00am-7:00pm or 6:00am - 7:00pm
   const timeMatch = line.match(/(\d{1,2}:\d{2}\s*[ap]m)\s*[-–—]\s*(\d{1,2}:\d{2}\s*[ap]m)/i);
   if (!timeMatch) return { date: datePart, mins: 0, note: 'Invalid time' };
 
   const [startStr, endStr] = [timeMatch[1], timeMatch[2]];
   const start = toMinutes(startStr);
   const end = toMinutes(endStr);
-  if (start === null || end === null) return { date: datePart, mins: 0, note: 'Bad time format' };
+  if (start === null || end === null) return { date: datePart, mins: 0, note: 'Bad time' };
 
   let totalMins = end - start;
   if (totalMins <= 0) totalMins += 1440;
 
-  // Lunch: 30min, 30 min, 0.5hr, 30 minutes, no lunch
   let lunch = 0;
   const lunchMatch = line.match(/(\d+(?:\.\d+)?)\s*(min|mins|minute|minutes|hr|hrs|hour|hours)/i);
   if (lunchMatch) {
@@ -126,14 +141,14 @@ const parseLine = line => {
   } else if (/no\s*lunch/i.test(line)) {
     lunch = 0;
   } else if (totalMins > 360) {
-    lunch = 30; // default 30min if shift > 6h
+    lunch = 30; // auto 30min if >6h
   }
 
   const workMins = Math.max(0, totalMins - lunch);
   return { date: datePart, mins: workMins, note: lunch > 0 ? '' : 'No lunch' };
 };
 
-/* ---------- CALC PAY ---------- */
+// Calculate Pay
 const calcPay = (mins, rate, taxPct) => {
   const hrs = mins / 60;
   const reg = Math.min(hrs, 40);
@@ -144,14 +159,19 @@ const calcPay = (mins, rate, taxPct) => {
   return { gross: +gross.toFixed(2), net: +net.toFixed(2), tax: +tax.toFixed(2), hrs: +hrs.toFixed(2) };
 };
 
-/* ---------- HISTORY ---------- */
+// Render History
 const renderHistory = () => {
   const data = history.slice(-50);
-  if (!data.length) { histBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">No history yet</td></tr>'; return; }
+  if (!data.length) {
+    histBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">No history yet</td></tr>';
+    return;
+  }
   const groups = {};
   data.forEach(r => {
     const d = new Date(r.date);
-    const week = `${d.getFullYear()}-W${String(Math.ceil((d.getDate() + d.getDay()) / 7)).padStart(2, '0')}`;
+    const weekStart = new Date(d);
+    weekStart.setDate(d.getDate() - d.getDay());
+    const week = `${weekStart.getFullYear()}-W${String(Math.ceil((weekStart.getDate() + 1) / 7)).padStart(2, '0')}`;
     (groups[week] ??= []).push(r);
   });
   histBody.innerHTML = '';
@@ -170,9 +190,7 @@ const renderHistory = () => {
 };
 renderHistory();
 
-/* ---------- CALCULATION ---------- */
-let debounceTimer;
-calc.addEventListener('click', () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(runCalc, 300); });
+// Run Calculation
 const runCalc = () => {
   nowStamp();
   const lines = input.value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -189,9 +207,9 @@ const runCalc = () => {
   const pay = calcPay(totalMins, rate, taxPct);
 
   out += `\nTotal: ${formatHM(totalMins)} (${pay.hrs} hrs)\n`;
-  out += `Gross: $${pay.gross.toFixed(2)}\n`;
-  out += `Tax (${taxPct}%): -$${pay.tax.toFixed(2)}\n`;
-  out += `Net Pay: $${pay.net.toFixed(2)} @ $${rate.toFixed(2)}/hr\n`;
+  out += `Gross: $${pay.gross}\n`;
+  out += `Tax (${taxPct}%): -$${pay.tax}\n`;
+  out += `Net Pay: $${pay.net} @ $${rate.toFixed(2)}/hr\n`;
 
   output.textContent = out;
   output.scrollIntoView({ behavior: 'smooth' });
@@ -202,28 +220,43 @@ const runCalc = () => {
   renderHistory();
 };
 
-/* ---------- UI ---------- */
+// Button Events
+calc.addEventListener('click', () => {
+  clearTimeout(window.calcDebounce);
+  window.calcDebounce = setTimeout(runCalc, 300);
+});
+
 clear.addEventListener('click', () => { input.value = ''; output.textContent = ''; input.focus(); });
-copy.addEventListener('click', async () => { await navigator.clipboard.writeText(output.textContent); const txt = copy.textContent; copy.textContent = 'Copied!'; setTimeout(() => copy.textContent = txt, 1200); });
+copy.addEventListener('click', async () => {
+  await navigator.clipboard.writeText(output.textContent);
+  const txt = copy.textContent; copy.textContent = 'Copied!';
+  setTimeout(() => copy.textContent = txt, 1200);
+});
 download.addEventListener('click', () => {
   const csv = 'Date,Raw,Hours,Note\n' + output.textContent.split('\n').map(l => {
     if (!l.startsWith('- ')) return '';
     const [dateRaw, ...rest] = l.slice(2).split(': ');
     const hrs = rest.join(': ').match(/(\d+:\d{2})/)?.[1] || '';
-    return `${dateRaw},${rest.join(': ')},${hrs},`;
+    return `${dateRaw},"${rest.join(': ')}",${hrs},`;
   }).filter(Boolean).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = Object.assign(document.createElement('a'), { href: url, download: 'shifts.csv' });
   a.click(); URL.revokeObjectURL(url);
 });
-themeBtn.addEventListener('click', () => { document.body.classList.toggle('dark'); themeBtn.textContent = document.body.classList.contains('dark') ? 'Light' : 'Dark'; });
+themeBtn.addEventListener('click', () => {
+  document.body.classList.toggle('dark');
+  themeBtn.textContent = document.body.classList.contains('dark') ? 'Light' : 'Dark';
+});
 
-input.addEventListener('keydown', e => { if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); calc.click(); } });
+// Keyboard & Touch
+input.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); calc.click(); }
+});
 input.focus();
 
 let pressTimer;
-calc.addEventListener('touchstart', e => { pressTimer = setTimeout(() => calc.click(), 800); });
+calc.addEventListener('touchstart', () => pressTimer = setTimeout(() => calc.click(), 800));
 calc.addEventListener('touchend', () => clearTimeout(pressTimer));
 calc.addEventListener('touchmove', () => clearTimeout(pressTimer));
 </script>
