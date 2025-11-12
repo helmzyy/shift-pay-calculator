@@ -8,8 +8,8 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon-192.png" type="image/png">
   <style>
-    :root{--bg:#f9f9fb;--card:#fff;--text:#1a1a1a;--primary:#2563eb;--border:#e5e7eb;--success:#10b981;--shadow:0 4px 6px rgba(0,0,0,.05);--radius:12px;--gap:1rem;}
-    @media (prefers-color-scheme: dark){:root{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--border:#334155;--primary:#3b82f6;}}
+    :root{--bg:#f9f9fb;--card:#fff;--text:#1a1a1a;--primary:#2563eb;--border:#e5e7eb;--success:#10b981;--shadow:0 4px 6px rgba(0,0,0,.05);--radius:12px;--gap:1rem;--highlight:#fef3c7;}
+    @media (prefers-color-scheme: dark){:root{--bg:#0f172a;--card:#1e293b;--text:#f1f5f9;--border:#334155;--primary:#3b82f6;--highlight:#451a03;}}
     *,*::before,*::after{box-sizing:border-box}
     body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;}
     .container{max-width:960px;margin:0 auto;padding:var(--gap);}
@@ -19,19 +19,21 @@
     label{display:flex;align-items:center;gap:.4rem;font-weight:500;font-size:.95rem;}
     input[type=number]{width:5.5rem;padding:.45rem .6rem;font-size:1rem;border:1px solid var(--border);border-radius:8px;}
     textarea{width:100%;min-height:160px;padding:.6rem;font-family:monospace;font-size:1rem;border:1px solid var(--border);border-radius:8px;resize:vertical;background:#fafafa;spellcheck:false;}
-    .btn{min-height:44px;padding:.55rem 1rem;font-size:1rem;font-weight:500;border:none;border-radius:8px;cursor:pointer;transition:transform .15s,box-shadow .15s;flex:1 1 100px;}
+    .btn{min-height:44px;padding:.55rem 1rem;font-size:1rem;font-weight:500;border:none;border-radius:8px;cursor:pointer;transition:all .2s;flex:1 1 100px;}
     .btn-primary{background:var(--primary);color:#fff}
-    .btn-secondary{background:#e2e8f0;color:#475569}
     .btn-success{background:var(--success);color:#fff}
+    .btn-secondary{background:#e2e8f0;color:#475569}
+    .btn-paste{background:#8b5cf6;color:#fff}
     .btn-install{background:#6366f1;color:#fff}
     .btn:hover{transform:translateY(-1px);box-shadow:0 2px 4px rgba(0,0,0,.1)}
+    .btn:active{transform:scale(0.98)}
     pre{background:#f1f5f9;padding:.8rem;border-radius:8px;border:1px solid var(--border);font-size:.9rem;white-space:pre-wrap;word-break:break-word;margin:1rem 0;max-height:300px;overflow-y:auto;}
     .small{font-size:.8rem;color:#64748b}
     table{width:100%;border-collapse:collapse;margin-top:1rem;font-size:.85rem}
     th,td{padding:.5rem .6rem;border-bottom:1px solid var(--border);text-align:left}
     th{background:#f8fafc;font-weight:600;color:#475569}
-    tr:hover td{background:#f8fafc}
-    .week-header{background:#fef3c7;font-weight:600}
+    tr:hover td{background:var(--highlight)}
+    .week-header{background:var(--highlight);font-weight:600;color:#92400e}
     @media(max-width:600px){.row{flex-direction:column;align-items:stretch}.btn{flex:none}}
   </style>
 </head>
@@ -47,16 +49,17 @@
     <textarea id="input" placeholder="11/5/25 6:00am-7:00pm 30min lunch"></textarea>
     <div class="row">
       <button id="calc" class="btn btn-primary">Calculate</button>
+      <button id="paste" class="btn btn-paste">Paste</button>
       <button id="clear" class="btn btn-secondary">Clear</button>
       <button id="copy" class="btn btn-secondary">Copy</button>
       <button id="download" class="btn btn-success">CSV</button>
       <button id="theme" class="btn btn-secondary">Dark</button>
-      <button id="installBtn" class="btn btn-install" hidden>Install App</button>
+      <button id="installBtn" class="btn btn-install" hidden>Install</button>
     </div>
     <pre id="output"></pre>
-    <h2 style="margin-top:1.5rem">History (weekly)</h2>
+    <h2 id="history-title" style="margin-top:1.5rem">History (weekly)</h2>
     <table id="history">
-      <thead><tr><th>Date</th><th>Hrs</th><th>Rate</th><th>Gross</th></tr></thead>
+      <thead><tr><th>Date</th><th>Hrs</th><th>Rate</th><th>Gross</th><th>Net</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -65,9 +68,25 @@
 <script>
 // DOM
 const $ = s => document.querySelector(s);
-const input = $('#input'), output = $('#output'), calc = $('#calc'), clear = $('#clear'), copy = $('#copy'),
-      download = $('#download'), themeBtn = $('#theme'), installBtn = $('#installBtn'),
-      rateIn = $('#rate'), taxIn = $('#tax'), histBody = $('#history tbody'), ts = $('#timestamp');
+const input = $('#input'), output = $('#output'), calc = $('#calc'), pasteBtn = $('#paste'),
+      clear = $('#clear'), copy = $('#copy'), download = $('#download'), themeBtn = $('#theme'),
+      installBtn = $('#installBtn'), rateIn = $('#rate'), taxIn = $('#tax'),
+      histBody = $('#history tbody'), ts = $('#timestamp'), historyTitle = $('#history-title');
+
+// Load saved settings
+const savedRate = localStorage.getItem('payRate');
+const savedTax = localStorage.getItem('taxRate');
+const savedTheme = localStorage.getItem('theme');
+if (savedRate) rateIn.value = savedRate;
+if (savedTax) taxIn.value = savedTax;
+if (savedTheme === 'dark') {
+  document.body.classList.add('dark');
+  themeBtn.textContent = 'Light';
+}
+
+// Save on change
+rateIn.addEventListener('change', () => localStorage.setItem('payRate', rateIn.value));
+taxIn.addEventListener('change', () => localStorage.setItem('taxRate', taxIn.value));
 
 // State
 let history = JSON.parse(localStorage.getItem('shiftHistory') || '[]');
@@ -75,8 +94,18 @@ let installPrompt = null;
 
 // PWA
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; installBtn.hidden = false; });
-installBtn.addEventListener('click', async () => { if (!installPrompt) return; installPrompt.prompt(); const { outcome } = await installPrompt.userChoice; if (outcome === 'accepted') installBtn.hidden = true; installPrompt = null; });
-if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('service-worker.js').catch(() => {}); }); }
+installBtn.addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  if (outcome === 'accepted') installBtn.hidden = true;
+  installPrompt = null;
+});
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
 
 // Helpers
 const nowStamp = () => ts.textContent = new Date().toLocaleString(); nowStamp();
@@ -92,29 +121,21 @@ const toMinutes = str => {
   return h * 60 + m;
 };
 
-// Parse Line — FIXED DASH & LUNCH
 const parseLine = line => {
   line = line.trim();
   if (!line) return null;
-
   if (/holiday|off|vacation|pto/i.test(line)) {
     return { date: line.split(/\s+/)[0], mins: 0, note: 'Off' };
   }
-
   const datePart = line.split(/\s+/)[0];
-
-  // FIXED: Match ANY dash: -, –, —, - (en/em/hyphen)
   const timeMatch = line.match(/(\d{1,2}:\d{2}\s*[ap]m)[\s\-–—\-]*(\d{1,2}:\d{2}\s*[ap]m)/i);
   if (!timeMatch) return { date: datePart, mins: 0, note: 'Invalid time' };
-
   const [startStr, endStr] = [timeMatch[1], timeMatch[2]];
   const start = toMinutes(startStr);
   const end = toMinutes(endStr);
   if (start === null || end === null) return { date: datePart, mins: 0, note: 'Bad time' };
-
   let totalMins = end - start;
   if (totalMins <= 0) totalMins += 1440;
-
   let lunch = 0;
   const lunchMatch = line.match(/(\d+(?:\.\d+)?)\s*(min|mins|minute|minutes|hr|hrs|hour|hours)/i);
   if (lunchMatch) {
@@ -126,12 +147,10 @@ const parseLine = line => {
   } else if (totalMins > 360) {
     lunch = 30;
   }
-
   const workMins = Math.max(0, totalMins - lunch);
   return { date: datePart, mins: workMins, note: lunch > 0 ? '' : 'No lunch' };
 };
 
-// Calc Pay
 const calcPay = (mins, rate, taxPct) => {
   const hrs = mins / 60;
   const reg = Math.min(hrs, 40);
@@ -142,10 +161,12 @@ const calcPay = (mins, rate, taxPct) => {
   return { gross: +gross.toFixed(2), net: +net.toFixed(2), tax: +tax.toFixed(2), hrs: +hrs.toFixed(2) };
 };
 
-// Render History
 const renderHistory = () => {
   const data = history.slice(-50);
-  if (!data.length) { histBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">No history yet</td></tr>'; return; }
+  if (!data.length) {
+    histBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999">No history yet</td></tr>';
+    return;
+  }
   const groups = {};
   data.forEach(r => {
     const d = new Date(r.date);
@@ -158,46 +179,62 @@ const renderHistory = () => {
   Object.keys(groups).sort().reverse().forEach(wk => {
     const rows = groups[wk];
     const totalH = rows.reduce((s, r) => s + r.totalHrs, 0);
+    const totalGross = rows.reduce((s, r) => s + r.gross, 0);
+    const totalNet = rows.reduce((s, r) => s + (r.gross * (1 - r.taxRate/100)), 0);
     const hdr = document.createElement('tr'); hdr.className = 'week-header';
-    hdr.innerHTML = `<td colspan="1"><strong>Week ${wk}</strong></td><td><strong>${totalH.toFixed(2)}</strong></td><td colspan="2"><em>${rows.length} shift${rows.length > 1 ? 's' : ''}</em></td>`;
+    hdr.innerHTML = `<td colspan="1"><strong>Week ${wk}</strong></td><td><strong>${totalH.toFixed(2)}</strong></td><td></td><td><strong>$${totalGross.toFixed(2)}</strong></td><td><strong>$${totalNet.toFixed(2)}</strong></td>`;
     histBody.appendChild(hdr);
     rows.forEach(r => {
+      const net = r.gross * (1 - r.taxRate/100);
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td style="padding-left:1.5rem">${r.date}</td><td>${r.totalHrs.toFixed(2)}</td><td>$${r.rate.toFixed(2)}</td><td>$${r.gross.toFixed(2)}</td>`;
+      tr.innerHTML = `<td style="padding-left:1.5rem">${r.date}</td><td>${r.totalHrs.toFixed(2)}</td><td>$${r.rate.toFixed(2)}</td><td>$${r.gross.toFixed(2)}</td><td>$${net.toFixed(2)}</td>`;
       histBody.appendChild(tr);
     });
   });
 };
 renderHistory();
 
-// Run Calc
 const runCalc = () => {
   nowStamp();
   const lines = input.value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   let totalMins = 0, out = '';
-
   lines.forEach(raw => {
     const r = parseLine(raw) || { date: '?', mins: 0, note: 'Skipped' };
     totalMins += r.mins;
     out += `- ${r.date}: ${raw} → ${formatHM(r.mins)}${r.note ? ` (${r.note})` : ''}\n`;
   });
-
   const rate = parseFloat(rateIn.value) || 0;
   const taxPct = parseFloat(taxIn.value) || 0;
   const pay = calcPay(totalMins, rate, taxPct);
-
   out += `\nTotal: ${formatHM(totalMins)} (${pay.hrs} hrs)\n`;
   out += `Gross: $${pay.gross}\n`;
   out += `Tax (${taxPct}%): -$${pay.tax}\n`;
   out += `Net Pay: $${pay.net} @ $${rate.toFixed(2)}/hr\n`;
-
   output.textContent = out;
-  output.scrollIntoView({ behavior: 'smooth' });
 
-  const entry = { date: new Date().toLocaleDateString(), totalHrs: pay.hrs, rate, gross: pay.gross };
+  const entry = { 
+    date: new Date().toLocaleDateString(), 
+    totalHrs: pay.hrs, 
+    rate, 
+    gross: pay.gross,
+    taxRate: taxPct
+  };
   history.push(entry);
   localStorage.setItem('shiftHistory', JSON.stringify(history));
   renderHistory();
+
+  // Flash button green
+  calc.classList.remove('btn-primary');
+  calc.classList.add('btn-success');
+  calc.textContent = 'Success!';
+  setTimeout(() => {
+    calc.classList.remove('btn-success');
+    calc.classList.add('btn-primary');
+    calc.textContent = 'Calculate';
+  }, 800);
+
+  // Auto-scroll
+  historyTitle.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
 // Buttons
@@ -205,6 +242,18 @@ calc.addEventListener('click', () => {
   clearTimeout(window.calcDebounce);
   window.calcDebounce = setTimeout(runCalc, 100);
 });
+
+pasteBtn.addEventListener('click', async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    input.value = text.trim();
+    pasteBtn.textContent = 'Pasted!';
+    setTimeout(() => pasteBtn.textContent = 'Paste', 1000);
+  } catch (err) {
+    alert('Failed to paste. Copy text first.');
+  }
+});
+
 clear.addEventListener('click', () => { input.value = ''; output.textContent = ''; input.focus(); });
 copy.addEventListener('click', async () => {
   await navigator.clipboard.writeText(output.textContent);
@@ -212,11 +261,11 @@ copy.addEventListener('click', async () => {
   setTimeout(() => copy.textContent = txt, 1200);
 });
 download.addEventListener('click', () => {
-  const csv = 'Date,Raw,Hours,Note\n' + output.textContent.split('\n').map(l => {
+  const csv = 'Date,Raw,Hours,Gross,Net\n' + output.textContent.split('\n').map(l => {
     if (!l.startsWith('- ')) return '';
     const [dateRaw, ...rest] = l.slice(2).split(': ');
     const hrs = rest.join(': ').match(/(\d+:\d{2})/)?.[1] || '';
-    return `${dateRaw},"${rest.join(': ')}",${hrs},`;
+    return `${dateRaw},"${rest.join(': ')}",${hrs},,`;
   }).filter(Boolean).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -225,10 +274,11 @@ download.addEventListener('click', () => {
 });
 themeBtn.addEventListener('click', () => {
   document.body.classList.toggle('dark');
-  themeBtn.textContent = document.body.classList.contains('dark') ? 'Light' : 'Dark';
+  const isDark = document.body.classList.contains('dark');
+  themeBtn.textContent = isDark ? 'Light' : 'Dark';
+  localStorage.setItem('theme', isDark ? 'dark' : 'light');
 });
 
-// Input
 input.addEventListener('keydown', e => {
   if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); calc.click(); }
 });
